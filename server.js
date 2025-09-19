@@ -51,11 +51,11 @@ app.use(express.json({ limit: '100kb' })); // parse JSON body for normal routes
 app.use(express.static('public'));
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 15 * 60 * 1000, // 15 دقيقة
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip, // Use req.ip safely behind proxy
+  keyGenerator: (req) => req.ip // استخدم الـ IP الصحيح خلف proxy
 });
 app.use(limiter);
 
