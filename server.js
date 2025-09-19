@@ -1,5 +1,4 @@
 // server.js
-// Production-ready Express server for Fawaterak IFrame integration
 require('dotenv').config();
 
 const express = require('express');
@@ -11,32 +10,36 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 
 const app = express();
-// وثّق الـ proxy قبل أي middleware يعتمد على IP (Railway / Render / Heroku)
-app.set('trust proxy', 1);
+// إعداد trust proxy ليعمل بشكل صحيح مع Railway
+app.set('trust proxy', true);
 
 const PORT = process.env.PORT || 3000;
 
 /* -------------- Middlewares -------------- */
-app.use(helmet());
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN || '*' // غيِّره للدومين بتاعك في production لو تحب
+app.use(helmet({
+  contentSecurityPolicy: false // تعطيل CSP مؤقتاً للتحقق من المشاكل
 }));
 
-// JSON parser للاستخدام العادي في الـ API routes
-app.use(express.json({ limit: '100kb' }));
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGIN || '*'
+}));
 
-// Rate limiter — استخدم req.ip (سيعمل صح وراء proxy بعد set('trust proxy'))
+app.use(express.json({ limit: '100kb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// إعداد rate limiting بشكل صحيح
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 200,
+  message: 'Too many requests from this IP',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip
+  keyGenerator: (req) => {
+    return req.ip; // استخدام IP العميل الحقيقي
+  }
 });
-app.use(limiter);
 
-// Serve static files from /public
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(limiter);
 
 /* -------------- Helpers -------------- */
 function generateHashKey(domain = process.env.FAWATERAK_DOMAIN) {
@@ -50,9 +53,7 @@ function generateHashKey(domain = process.env.FAWATERAK_DOMAIN) {
 
 /* -------------- API Routes -------------- */
 
-/**
- * GET /api/fawaterak/hashkey
- */
+// GET /api/fawaterak/hashkey
 app.get('/api/fawaterak/hashkey', (req, res) => {
   try {
     const domain = process.env.FAWATERAK_DOMAIN || `${req.protocol}://${req.get('host')}`;
@@ -64,14 +65,12 @@ app.get('/api/fawaterak/hashkey', (req, res) => {
   }
 });
 
-/**
- * POST /api/fawaterak/create-invoice
- * Body: { cartTotal, currency, customer, cartItems, payLoad, redirectionUrls }
- */
+// POST /api/fawaterak/create-invoice
 app.post('/api/fawaterak/create-invoice', async (req, res) => {
   try {
     const body = req.body || {};
     const cartTotal = body.cartTotal || 0;
+    
     if (Number(cartTotal) <= 0) {
       return res.status(400).json({ ok: false, message: 'cartTotal must be > 0' });
     }
@@ -112,26 +111,42 @@ app.post('/api/fawaterak/create-invoice', async (req, res) => {
         HashKey: hashKey
       };
 
-      const axiosRes = await axios.post(createInvoiceUrl, payloadToApi, { headers, timeout: 10000 });
-      apiResult = axiosRes.data;
+      try {
+        const axiosRes = await axios.post(createInvoiceUrl, payloadToApi, { headers, timeout: 10000 });
+        apiResult = axiosRes.data;
+      } catch (axiosError) {
+        console.error('Fawaterak API error:', axiosError.response?.data || axiosError.message);
+        return res.status(502).json({ 
+          ok: false, 
+          message: 'Failed to create invoice with Fawaterak', 
+          error: axiosError.message 
+        });
+      }
     }
 
     return res.json({ ok: true, hashKey, requestBody, apiResult });
   } catch (err) {
-    console.error('create-invoice error:', err.response ? err.response.data : err.message);
-    return res.status(500).json({ ok: false, message: 'Failed to create invoice', error: err.message });
+    console.error('create-invoice error:', err.message);
+    return res.status(500).json({ 
+      ok: false, 
+      message: 'Failed to create invoice', 
+      error: err.message 
+    });
   }
 });
 
-/**
- * POST /api/fawaterak/webhook_json
- * Use raw body to verify signature correctly
- */
+// POST /api/fawaterak/webhook_json
 app.post('/api/fawaterak/webhook_json', express.raw({ type: 'application/json' }), (req, res) => {
   try {
-    const payloadRaw = req.body ? req.body.toString('utf8') : '{}';
+    const payloadRaw = req.body.toString('utf8');
     let payload;
-    try { payload = JSON.parse(payloadRaw || '{}'); } catch (e) { payload = {}; }
+    
+    try { 
+      payload = JSON.parse(payloadRaw || '{}'); 
+    } catch (e) { 
+      console.warn('Webhook payload is not valid JSON');
+      payload = {}; 
+    }
 
     const webhookSecret = process.env.FAWATERAK_WEBHOOK_SECRET;
     const signatureHeader = req.headers['x-fawaterak-signature'] || req.headers['x-signature'] || null;
@@ -161,22 +176,18 @@ app.post('/api/fawaterak/webhook_json', express.raw({ type: 'application/json' }
   }
 });
 
-/* -------------- Frontend routes (serve SPA / static) -------------- */
-/**
- * Serve index.html for any GET that is NOT /api/*
- * This allows client-side routing and ensures static files are served correctly.
- */
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api/')) return next(); // let API routes handle it (or 404)
+// Route for root - serve index.html
+app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-/* Fallback for non-handled routes (optional) */
+// Fallback for non-handled routes
 app.use((req, res) => {
   res.status(404).send('Not found');
 });
 
-/* Start server */
+// Start server
 app.listen(PORT, () => {
-  console.log(`Fawaterak demo server listening on port ${PORT}`);
+  console.log(`Fawaterak server listening on port ${PORT}`);
+  console.log(`Environment: ${process.env.ENV_TYPE || 'development'}`);
 });

@@ -15,18 +15,22 @@
     "helmet": "^6.2.0"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22"
+    "nodemon": "^3.1.10"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MidoCode7/fawaterak-test.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "fawaterak",
+    "payment",
+    "egypt"
+  ],
+  "author": "MidoCode7",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/MidoCode7/fawaterak-test/issues"
   },
   "homepage": "https://github.com/MidoCode7/fawaterak-test#readme",
-  "description": ""
+  "description": "Fawaterak payment integration demo"
 }
