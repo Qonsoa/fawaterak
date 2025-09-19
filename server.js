@@ -50,12 +50,12 @@ app.use(cors({
 app.use(express.json({ limit: '100kb' })); // parse JSON body for normal routes
 app.use(express.static('public'));
 
-// Basic rate limiting for security
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip, // Use req.ip safely behind proxy
 });
 app.use(limiter);
 
