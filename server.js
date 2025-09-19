@@ -15,6 +15,19 @@ const app = express();
 app.set('trust proxy', true); 
 const PORT = process.env.PORT || 3000;
 
+const path = require('path');
+
+// Serve index.html on root
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Optional: serve index.html for any unmatched route (SPA or internal links)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+
 /**
  * Required env variables (see .env.example)
  * FAWATERAK_VENDOR_KEY      -> secret vendor key (server-only, used for HMAC & Bearer if creating invoice server-side)
