@@ -1,45 +1,29 @@
-// server.js
+// server.js - الإصدار النهائي المعدل ليعمل على Railway
 require('dotenv').config();
 
 const express = require('express');
 const crypto = require('crypto');
 const axios = require('axios');
-const helmet = require('helmet');
-const cors = require('cors');
-const rateLimit = require('express-rate-limit');
 const path = require('path');
 
 const app = express();
-// إعداد trust proxy ليعمل بشكل صحيح مع Railway
+
+// إعداد trust proxy بشكل صحيح لـ Railway - يجب أن يكون أول إعداد
 app.set('trust proxy', true);
 
 const PORT = process.env.PORT || 3000;
 
 /* -------------- Middlewares -------------- */
-app.use(helmet({
-  contentSecurityPolicy: false // تعطيل CSP مؤقتاً للتحقق من المشاكل
-}));
-
-app.use(cors({
+// CORS
+app.use(require('cors')({
   origin: process.env.ALLOWED_ORIGIN || '*'
 }));
 
+// JSON parser
 app.use(express.json({ limit: '100kb' }));
+
+// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
-
-// إعداد rate limiting بشكل صحيح
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
-  message: 'Too many requests from this IP',
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    return req.ip; // استخدام IP العميل الحقيقي
-  }
-});
-
-app.use(limiter);
 
 /* -------------- Helpers -------------- */
 function generateHashKey(domain = process.env.FAWATERAK_DOMAIN) {
@@ -190,4 +174,5 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`Fawaterak server listening on port ${PORT}`);
   console.log(`Environment: ${process.env.ENV_TYPE || 'development'}`);
+  console.log(`Trust proxy enabled: ${app.get('trust proxy')}`);
 });
