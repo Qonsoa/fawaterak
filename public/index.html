@@ -24,7 +24,7 @@
       color: #2c3e50;
       margin-bottom: 20px;
     }
-    #fawaterkDiv {
+    #fawaterkDivId {
       width: 100%;
       margin: 20px auto;
       min-height: 500px;
@@ -60,7 +60,8 @@
   <div class="container">
     <h2>دفع اشتراك - Captain Gym</h2>
     <p>جاري تحميل بوابة الدفع...</p>
-    <div id="fawaterkDiv" class="loading">
+    <!-- تغيير ID إلى fawaterkDivId كما تتوقعه المكتبة -->
+    <div id="fawaterkDivId" class="loading">
       <p>جاري تهيئة بوابة الدفع، يرجى الانتظار...</p>
     </div>
   </div>
@@ -96,7 +97,7 @@
     // دالة لتحميل المكتبة بشكل منفصل
     function loadFawaterkLibrary() {
       return new Promise((resolve, reject) => {
-        // تحقق إذا كانت الدالة العامة محملة مسبقاً (وفقاً للوثائق)
+        // تحقق إذا كانت الدالة العامة محملة مسبقاً
         if (typeof window.fawaterkCheckout !== 'undefined') {
           return resolve();
         }
@@ -106,7 +107,6 @@
         script.onload = () => {
           // انتظر قليلاً بعد التحميل للتأكد من تهيئة المكتبة
           setTimeout(() => {
-            // تحقق من وجود الدالة العامة وفقاً للوثائق
             if (typeof window.fawaterkCheckout !== 'undefined') {
               resolve();
             } else {
@@ -149,7 +149,7 @@
         const hashKey = data.hashKey;
         const requestBody = data.requestBody;
 
-        // 3. أخيراً تهيئة بوابة الدفع باستخدام الدالة العامة وفقاً للوثائق
+        // 3. أخيراً تهيئة بوابة الدفع
         console.log('جاري تهيئة بوابة الدفع...');
         const pluginConfig = {
           envType: data.envType || "test",
@@ -159,15 +159,14 @@
           requestBody: requestBody
         };
 
-        // استخدام الدالة العامة fawaterkCheckout بدلاً من new FawaterkPayment()
-        // هذا هو التغيير الرئيسي وفقاً للوثائق
+        // استخدام الدالة العامة fawaterkCheckout
         window.fawaterkCheckout(pluginConfig);
 
         console.log('تم تهيئة بوابة الدفع بنجاح');
         
       } catch (err) {
         console.error('خطأ في تهيئة الدفع:', err);
-        document.getElementById('fawaterkDiv').innerHTML = `
+        document.getElementById('fawaterkDivId').innerHTML = `
           <div class="error">
             <h3>عذراً، حدث خطأ في تحميل بوابة الدفع</h3>
             <p>${err.message || 'يرجى المحاولة مرة أخرى لاحقاً'}</p>
