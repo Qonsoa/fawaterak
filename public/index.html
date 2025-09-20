@@ -28,6 +28,8 @@
       width: 100%;
       margin: 20px auto;
       min-height: 500px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
     }
     .loading {
       padding: 40px;
@@ -40,7 +42,22 @@
       border-radius: 5px;
       margin: 20px 0;
     }
+    button {
+      background: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #2980b9;
+    }
   </style>
+  
+  <!-- تحميل مكتبة Fawaterk في الhead مع خاصية async -->
+  <script src="https://app.fawaterk.com/fawaterkPlugin/fawaterkPlugin.min.js" async></script>
 </head>
 <body>
   <div class="container">
@@ -50,8 +67,6 @@
       <p>جاري تهيئة بوابة الدفع، يرجى الانتظار...</p>
     </div>
   </div>
-
-  <script src="https://app.fawaterk.com/fawaterkPlugin/fawaterkPlugin.min.js"></script>
 
   <script>
     // بيانات الطلب
@@ -80,6 +95,24 @@
         pendingUrl: window.location.origin + '/pending.html'
       }
     };
+
+    // دالة للتحقق من توفر FawaterkPayment
+    function checkFawaterkPayment(callback, maxAttempts = 10, interval = 500) {
+      let attempts = 0;
+      
+      function check() {
+        attempts++;
+        if (typeof window.FawaterkPayment !== 'undefined') {
+          callback(null, window.FawaterkPayment);
+        } else if (attempts < maxAttempts) {
+          setTimeout(check, interval);
+        } else {
+          callback(new Error('FawaterkPayment not available after multiple attempts'));
+        }
+      }
+      
+      check();
+    }
 
     async function initFawaterak() {
       try {
@@ -113,24 +146,42 @@
           requestBody: requestBody
         };
 
-        const payment = new FawaterkPayment({
-          container: '#fawaterkDiv',
-          ...pluginConfig,
-          onSuccess: function (response) {
-            console.log('تم الدفع بنجاح', response);
-            window.location = requestBody.redirectionUrls.successUrl;
-          },
-          onFailure: function (err) {
-            console.error('فشل الدفع', err);
-            window.location = requestBody.redirectionUrls.failUrl;
-          },
-          onLoad: function() {
-            console.log('تم تحميل بوابة الدفع بنجاح');
-            document.querySelector('#fawaterkDiv').classList.remove('loading');
+        // الانتظار حتى يكون FawaterkPayment متاحاً
+        checkFawaterkPayment(function(err, FawaterkPayment) {
+          if (err) {
+            throw new Error('لم يتم تحميل مكتبة الدفع بشكل صحيح: ' + err.message);
+          }
+
+          try {
+            const payment = new FawaterkPayment({
+              container: '#fawaterkDiv',
+              ...pluginConfig,
+              onSuccess: function (response) {
+                console.log('تم الدفع بنجاح', response);
+                window.location = requestBody.redirectionUrls.successUrl;
+              },
+              onFailure: function (err) {
+                console.error('فشل الدفع', err);
+                window.location = requestBody.redirectionUrls.failUrl;
+              },
+              onLoad: function() {
+                console.log('تم تحميل بوابة الدفع بنجاح');
+                document.querySelector('#fawaterkDiv').classList.remove('loading');
+              }
+            });
+
+            payment.render();
+          } catch (e) {
+            console.error('خطأ في إنشاء كائن الدفع:', e);
+            document.getElementById('fawaterkDiv').innerHTML = `
+              <div class="error">
+                <h3>عذراً، حدث خطأ في تهيئة بوابة الدفع</h3>
+                <p>${e.message || 'يرجى المحاولة مرة أخرى لاحقاً'}</p>
+                <button onclick="location.reload()">إعادة المحاولة</button>
+              </div>
+            `;
           }
         });
-
-        payment.render();
         
       } catch (err) {
         console.error('خطأ في تهيئة الدفع:', err);
@@ -144,12 +195,11 @@
       }
     }
 
-    // بدء التهيئة عندما يصبح DOM جاهزاً
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initFawaterak);
-    } else {
-      initFawaterak();
-    }
+    // بدء التهيئة عندما يصبح كل شيء جاهزاً
+    document.addEventListener('DOMContentLoaded', function() {
+      // الانتظار لثانية إضافية للتأكد من تحميل جميع الموارد
+      setTimeout(initFawaterak, 1000);
+    });
   </script>
 </body>
 </html>
