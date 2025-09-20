@@ -96,8 +96,8 @@
     // دالة لتحميل المكتبة بشكل منفصل
     function loadFawaterkLibrary() {
       return new Promise((resolve, reject) => {
-        // تحقق إذا كانت المكتبة محملة مسبقاً
-        if (typeof window.FawaterkPayment !== 'undefined') {
+        // تحقق إذا كانت الدالة العامة محملة مسبقاً (وفقاً للوثائق)
+        if (typeof window.fawaterkCheckout !== 'undefined') {
           return resolve();
         }
 
@@ -106,10 +106,11 @@
         script.onload = () => {
           // انتظر قليلاً بعد التحميل للتأكد من تهيئة المكتبة
           setTimeout(() => {
-            if (typeof window.FawaterkPayment !== 'undefined') {
+            // تحقق من وجود الدالة العامة وفقاً للوثائق
+            if (typeof window.fawaterkCheckout !== 'undefined') {
               resolve();
             } else {
-              reject(new Error('المكتبة تم تحميلها لكن FawaterkPayment غير معرف'));
+              reject(new Error('المكتبة تم تحميلها لكن الدالة fawaterkCheckout غير معرفة'));
             }
           }, 1000);
         };
@@ -148,7 +149,7 @@
         const hashKey = data.hashKey;
         const requestBody = data.requestBody;
 
-        // 3. أخيراً تهيئة بوابة الدفع
+        // 3. أخيراً تهيئة بوابة الدفع باستخدام الدالة العامة وفقاً للوثائق
         console.log('جاري تهيئة بوابة الدفع...');
         const pluginConfig = {
           envType: data.envType || "test",
@@ -158,24 +159,10 @@
           requestBody: requestBody
         };
 
-        const payment = new FawaterkPayment({
-          container: '#fawaterkDiv',
-          ...pluginConfig,
-          onSuccess: function (response) {
-            console.log('تم الدفع بنجاح', response);
-            window.location = requestBody.redirectionUrls.successUrl;
-          },
-          onFailure: function (err) {
-            console.error('فشل الدفع', err);
-            window.location = requestBody.redirectionUrls.failUrl;
-          },
-          onLoad: function() {
-            console.log('تم تحميل بوابة الدفع بنجاح');
-            document.querySelector('#fawaterkDiv').classList.remove('loading');
-          }
-        });
+        // استخدام الدالة العامة fawaterkCheckout بدلاً من new FawaterkPayment()
+        // هذا هو التغيير الرئيسي وفقاً للوثائق
+        window.fawaterkCheckout(pluginConfig);
 
-        payment.render();
         console.log('تم تهيئة بوابة الدفع بنجاح');
         
       } catch (err) {
