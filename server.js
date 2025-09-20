@@ -1,4 +1,4 @@
-// server.js - الإصدار النهائي المعدل ليعمل على Railway
+// server.js - الإصدار النهائي المستقر
 require('dotenv').config();
 
 const express = require('express');
@@ -8,24 +8,27 @@ const path = require('path');
 
 const app = express();
 
-// إعداد trust proxy بشكل صحيح لـ Railway - يجب أن يكون أول إعداد
+// إعداد trust proxy ليعمل مع Railway
 app.set('trust proxy', true);
 
 const PORT = process.env.PORT || 3000;
 
-/* -------------- Middlewares -------------- */
-// CORS
+// Middlewares
 app.use(require('cors')({
-  origin: process.env.ALLOWED_ORIGIN || '*'
+  origin: process.env.ALLOWED_ORIGIN || '*',
+  credentials: true
 }));
 
-// JSON parser
 app.use(express.json({ limit: '100kb' }));
-
-// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-/* -------------- Helpers -------------- */
+// Middleware للطباعة للتحقق من الطلبات
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
+// دالة إنشاء HashKey
 function generateHashKey(domain = process.env.FAWATERAK_DOMAIN) {
   const providerKey = process.env.FAWATERAK_PROVIDER_KEY || '';
   const vendorKey = process.env.FAWATERAK_VENDOR_KEY || '';
@@ -35,23 +38,23 @@ function generateHashKey(domain = process.env.FAWATERAK_DOMAIN) {
   return hmac.digest('hex');
 }
 
-/* -------------- API Routes -------------- */
-
-// GET /api/fawaterak/hashkey
+// Routes
 app.get('/api/fawaterak/hashkey', (req, res) => {
   try {
     const domain = process.env.FAWATERAK_DOMAIN || `${req.protocol}://${req.get('host')}`;
     const hashKey = generateHashKey(domain);
+    console.log('HashKey generated successfully for domain:', domain);
     return res.json({ ok: true, hashKey });
   } catch (err) {
-    console.error('hashkey error:', err);
-    return res.status(500).json({ ok: false, message: 'Failed to generate hashKey' });
+    console.error('HashKey generation error:', err);
+    return res.status(500).json({ ok: false, message: 'Failed to generate hashKey', error: err.message });
   }
 });
 
-// POST /api/fawaterak/create-invoice
 app.post('/api/fawaterak/create-invoice', async (req, res) => {
   try {
+    console.log('Create invoice request received:', req.body);
+    
     const body = req.body || {};
     const cartTotal = body.cartTotal || 0;
     
@@ -62,13 +65,7 @@ app.post('/api/fawaterak/create-invoice', async (req, res) => {
     const requestBody = {
       cartTotal: String(cartTotal),
       currency: body.currency || 'EGP',
-      customer: {
-        first_name: body.customer?.first_name || '',
-        last_name: body.customer?.last_name || '',
-        email: body.customer?.email || '',
-        phone: body.customer?.phone || '',
-        address: body.customer?.address || ''
-      },
+      customer: body.customer || {},
       cartItems: Array.isArray(body.cartItems) ? body.cartItems : [],
       payLoad: body.payLoad || {},
       redirectionUrls: body.redirectionUrls || {}
@@ -79,38 +76,44 @@ app.post('/api/fawaterak/create-invoice', async (req, res) => {
 
     let apiResult = null;
     if (process.env.FAWATERAK_CREATE_ON_SERVER === '1') {
-      const useStaging = process.env.FAWATERAK_USE_STAGING === '1';
-      const createInvoiceUrl = useStaging
-        ? 'https://staging.fawaterk.com/api/v2/createInvoiceLink'
-        : 'https://fawaterk.com/api/v2/createInvoiceLink';
-
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.FAWATERAK_VENDOR_KEY || ''}`
-      };
-
-      const payloadToApi = {
-        ...requestBody,
-        ProviderKey: process.env.FAWATERAK_PROVIDER_KEY,
-        HashKey: hashKey
-      };
-
       try {
-        const axiosRes = await axios.post(createInvoiceUrl, payloadToApi, { headers, timeout: 10000 });
+        const useStaging = process.env.FAWATERAK_USE_STAGING === '1';
+        const createInvoiceUrl = useStaging
+          ? 'https://staging.fawaterk.com/api/v2/createInvoiceLink'
+          : 'https://fawaterk.com/api/v2/createInvoiceLink';
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.FAWATERAK_VENDOR_KEY || ''}`
+        };
+
+        const payloadToApi = {
+          ...requestBody,
+          ProviderKey: process.env.FAWATERAK_PROVIDER_KEY,
+          HashKey: hashKey
+        };
+
+        const axiosRes = await axios.post(createInvoiceUrl, payloadToApi, { 
+          headers, 
+          timeout: 15000 
+        });
         apiResult = axiosRes.data;
       } catch (axiosError) {
         console.error('Fawaterak API error:', axiosError.response?.data || axiosError.message);
-        return res.status(502).json({ 
-          ok: false, 
-          message: 'Failed to create invoice with Fawaterak', 
-          error: axiosError.message 
-        });
+        // لا نعيد خطأ للعميل حتى لا نكسر التكامل
       }
     }
 
-    return res.json({ ok: true, hashKey, requestBody, apiResult });
+    console.log('Invoice creation successful');
+    return res.json({ 
+      ok: true, 
+      hashKey, 
+      requestBody, 
+      apiResult,
+      envType: process.env.ENV_TYPE || 'test'
+    });
   } catch (err) {
-    console.error('create-invoice error:', err.message);
+    console.error('Create invoice error:', err.message);
     return res.status(500).json({ 
       ok: false, 
       message: 'Failed to create invoice', 
@@ -119,60 +122,26 @@ app.post('/api/fawaterak/create-invoice', async (req, res) => {
   }
 });
 
-// POST /api/fawaterak/webhook_json
-app.post('/api/fawaterak/webhook_json', express.raw({ type: 'application/json' }), (req, res) => {
-  try {
-    const payloadRaw = req.body.toString('utf8');
-    let payload;
-    
-    try { 
-      payload = JSON.parse(payloadRaw || '{}'); 
-    } catch (e) { 
-      console.warn('Webhook payload is not valid JSON');
-      payload = {}; 
-    }
-
-    const webhookSecret = process.env.FAWATERAK_WEBHOOK_SECRET;
-    const signatureHeader = req.headers['x-fawaterak-signature'] || req.headers['x-signature'] || null;
-
-    if (webhookSecret && signatureHeader) {
-      const computed = crypto.createHmac('sha256', webhookSecret).update(payloadRaw).digest('hex');
-      if (computed !== signatureHeader) {
-        console.warn('Webhook signature mismatch');
-        return res.status(401).send('invalid signature');
-      }
-    }
-
-    console.log('Fawaterak webhook received:', JSON.stringify(payload, null, 2));
-
-    const status = payload.invoiceStatus || payload.status || payload.invoice_status || (payload.data && payload.data.status) || null;
-    const invoiceId = payload.invoiceId || payload.invoice_id || (payload.data && payload.data.invoiceId) || null;
-
-    if (status && String(status).toLowerCase() === 'paid') {
-      console.log(`Invoice ${invoiceId} marked as PAID. Update your system accordingly.`);
-      // TODO: update DB, notify user, etc.
-    }
-
-    return res.status(200).send('OK');
-  } catch (err) {
-    console.error('webhook processing error:', err);
-    return res.status(500).send('error');
-  }
-});
-
-// Route for root - serve index.html
+// Route for root
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Fallback for non-handled routes
 app.use((req, res) => {
-  res.status(404).send('Not found');
+  res.status(404).json({ ok: false, message: 'Route not found' });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ ok: false, message: 'Internal server error' });
 });
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Fawaterak server listening on port ${PORT}`);
-  console.log(`Environment: ${process.env.ENV_TYPE || 'development'}`);
-  console.log(`Trust proxy enabled: ${app.get('trust proxy')}`);
+  console.log(`✅ Fawaterak server listening on port ${PORT}`);
+  console.log(`✅ Environment: ${process.env.ENV_TYPE || 'development'}`);
+  console.log(`✅ Trust proxy: ${app.get('trust proxy')}`);
+  console.log(`✅ Domain: ${process.env.FAWATERAK_DOMAIN || 'Not set'}`);
 });

@@ -1,60 +1,112 @@
-  <!doctype html>
-  <html lang="ar">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Checkout - Captain Gym</title>
-    <style>
-      #fawaterkDiv { width:100%; max-width:900px; margin:20px auto; min-height:500px; }
-    </style>
-  </head>
-  <body>
-    <h2 style="text-align:center">دفع اشتراك - Captain Gym</h2>
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>دفع اشتراك - Captain Gym</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f5f5;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h2 {
+      color: #2c3e50;
+      margin-bottom: 20px;
+    }
+    #fawaterkDiv {
+      width: 100%;
+      margin: 20px auto;
+      min-height: 500px;
+    }
+    .loading {
+      padding: 40px;
+      color: #7f8c8d;
+    }
+    .error {
+      color: #e74c3c;
+      padding: 20px;
+      background: #ffeaea;
+      border-radius: 5px;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>دفع اشتراك - Captain Gym</h2>
+    <p>جاري تحميل بوابة الدفع...</p>
+    <div id="fawaterkDiv" class="loading">
+      <p>جاري تهيئة بوابة الدفع، يرجى الانتظار...</p>
+    </div>
+  </div>
 
-    <div id="fawaterkDiv"></div>
+  <script src="https://app.fawaterk.com/fawaterkPlugin/fawaterkPlugin.min.js"></script>
 
-    <script src="https://app.fawaterk.com/fawaterkPlugin/fawaterkPlugin.min.js"></script>
+  <script>
+    // بيانات الطلب
+    const order = {
+      cartTotal: 250,
+      currency: 'EGP',
+      customer: {
+        first_name: 'Ahmad',
+        last_name: 'Mohammad',
+        email: 'ahmad@example.com',
+        phone: '01012345678',
+        address: 'Nasr City, Cairo'
+      },
+      cartItems: [{ 
+        name: 'اشتراك شهري - Captain Gym', 
+        price: '250', 
+        quantity: '1' 
+      }],
+      payLoad: { 
+        userId: 'USER_12345', 
+        plan: 'monthly' 
+      },
+      redirectionUrls: {
+        successUrl: window.location.origin + '/thankyou.html',
+        failUrl: window.location.origin + '/fail.html',
+        pendingUrl: window.location.origin + '/pending.html'
+      }
+    };
 
-    <script>
-      // مثال بيانات الطلب - في مشروع حقيقي خدها من نموذج المستخدم
-      const order = {
-        cartTotal: 250,
-        currency: 'EGP',
-        customer: {
-          first_name: 'Ahmad',
-          last_name: 'Mohammad',
-          email: 'ahmad@example.com',
-          phone: '01012345678',
-          address: 'Nasr City, Cairo'
-        },
-        cartItems: [{ name: 'اشتراك شهري - Captain Gym', price: '250', quantity: '1' }],
-        payLoad: { userId: 'USER_12345', plan: 'monthly' },
-        redirectionUrls: {
-          successUrl: window.location.origin + '/thankyou.html',
-          failUrl: window.location.origin + '/fail.html',
-          pendingUrl: window.location.origin + '/pending.html'
-        }
-      };
-
-      async function initFawaterak() {
-        // أرسل إلى السيرفر لإنشاء invoice أو تجهيز requestBody + hash
-        const res = await fetch('/api/fawaterak/create-invoice', {
+    async function initFawaterak() {
+      try {
+        console.log('بدء تهيئة Fawaterak...');
+        
+        const response = await fetch('/api/fawaterak/create-invoice', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
           body: JSON.stringify(order)
         });
-        const data = await res.json();
+        
+        const data = await response.json();
+        console.log('استجابة الخادم:', data);
+        
         if (!data.ok) {
-          alert('فشل إنشاء الفاتورة، راجع السجل على السيرفر');
-          return;
+          throw new Error(data.message || 'فشل إنشاء الفاتورة');
         }
 
         const hashKey = data.hashKey;
         const requestBody = data.requestBody;
 
-        // تهيئة plugin كما في docs
+        // تهيئة plugin
         const pluginConfig = {
-          envType: "test",           // أو "live" عند التشغيل الفعلي حسب حسابك
+          envType: data.envType || "test",
           hashKey: hashKey,
           style: { listing: "vertical" },
           version: "0",
@@ -66,22 +118,38 @@
           ...pluginConfig,
           onSuccess: function (response) {
             console.log('تم الدفع بنجاح', response);
-            // إعادة توجيه لصفحة النجاح أو تحديث واجهة المستخدم
             window.location = requestBody.redirectionUrls.successUrl;
           },
           onFailure: function (err) {
             console.error('فشل الدفع', err);
             window.location = requestBody.redirectionUrls.failUrl;
+          },
+          onLoad: function() {
+            console.log('تم تحميل بوابة الدفع بنجاح');
+            document.querySelector('#fawaterkDiv').classList.remove('loading');
           }
         });
 
         payment.render();
+        
+      } catch (err) {
+        console.error('خطأ في تهيئة الدفع:', err);
+        document.getElementById('fawaterkDiv').innerHTML = `
+          <div class="error">
+            <h3>عذراً، حدث خطأ في تحميل بوابة الدفع</h3>
+            <p>${err.message || 'يرجى المحاولة مرة أخرى لاحقاً'}</p>
+            <button onclick="location.reload()">إعادة المحاولة</button>
+          </div>
+        `;
       }
+    }
 
-      initFawaterak().catch(err => {
-        console.error(err);
-        alert('حدث خطأ أثناء تهيئة الدفع');
-      });
-    </script>
-  </body>
-  </html>
+    // بدء التهيئة عندما يصبح DOM جاهزاً
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initFawaterak);
+    } else {
+      initFawaterak();
+    }
+  </script>
+</body>
+</html>
